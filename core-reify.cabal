@@ -1,0 +1,36 @@
+Name:                core-reify
+Version:             0.1
+Synopsis:            Reification of GHC Core 
+Description:
+  This package performs reification on Haskell expressions into GHC Core syntax trees and back.
+
+Category:            Language, Optimization, Transformation, Refactoring, Reflection
+License:             BSD3
+License-file:        LICENSE
+Author:              Andy Gill
+Maintainer:          Andy Gill <andygill@ku.edu>
+Stability:           alpha
+build-type:          Simple
+Cabal-Version:       >= 1.14
+
+Library
+  ghc-options: -Wall -fno-warn-orphans
+  Build-Depends: base >= 4 && < 5,
+                 ghc >= 7.6,
+                 kure >= 2.14.0,
+                 hermit >= 0.3.2.0,
+                 template-haskell,
+                 containers >= 0.5
+
+  default-language: Haskell2010
+
+  Exposed-modules:
+       Language.GHC.Core.Reify
+       Language.GHC.Core.Reify.Plugin
+       Language.GHC.Core.Reify.Internals
+
+  Hs-Source-Dirs: src
+
+source-repository head
+    type:     git
+    location: git://github.com/ku-fpg/core-reify.git
