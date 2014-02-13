@@ -150,9 +150,20 @@ reifyExpr = do
 --	traceR $ ("ty" ++ show ty)
 --	traceR $ ("expr" ++ show expr)
 --	str <- constT (mkStringExpr "mhhha")
+--        uq <- 
+        let nm =  getOccString $ idName (case expr of { Var v -> v })
+
+        let str = foldr (\ a b -> mkConApp consDataCon [Type charTy,mkConApp charDataCon [Lit $ MachChar a],b])
+                        (mkConApp nilDataCon [Type charTy])
+                        nm
+
 	return $ apps returnId [exprTy ty]
 	         [ apps varId [ty] 
-	            [ apps bindeeId [ty] [expr,apps nothingId [exprTy ty] []]]
+	            [ apps bindeeId [ty] [ expr
+                                         , apps nothingId [exprTy ty] []
+                                         , str
+                                         , mkConApp intDataCon [Lit $ MachInt 0]
+                                         ]]
 		 ]
 
 
