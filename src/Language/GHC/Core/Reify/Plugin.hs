@@ -8,6 +8,7 @@ import Control.Arrow (arr,(>>>),(&&&))
 import qualified Data.Map as M
 import Text.Printf (printf)
 import Data.List (intercalate)
+import Data.Maybe (Maybe(..))
 
 import qualified Language.Haskell.TH as TH (Name,mkName)
 import qualified Language.Haskell.TH.Syntax as TH (showName)
@@ -125,6 +126,7 @@ reifyExpr = do
 	bindeeId  <- findIdT "Language.GHC.Core.Reify.Internals.Bindee_"
 	returnId  <- findIdT "Language.GHC.Core.Reify.Internals.returnIO"
 	exprTyId  <- findTyIdT "Language.GHC.Core.Reify.Internals.Expr"
+	nothingId  <- findIdT "Language.GHC.Core.Reify.Internals.nothing"
 	unitId    <- findIdT "()"
 	observeR "ref"
 	dynFlags <- constT getDynFlags
@@ -150,7 +152,7 @@ reifyExpr = do
 --	str <- constT (mkStringExpr "mhhha")
 	return $ apps returnId [exprTy ty]
 	         [ apps varId [ty] 
-	            [ apps bindeeId [ty] [expr] ]
+	            [ apps bindeeId [ty] [expr,apps nothingId [exprTy ty] []]]
 		 ]
 
 
