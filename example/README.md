@@ -1,6 +1,6 @@
 To run this example.
 
-% hermit Main.hs -v0 -opt=Language.GHC.Core.Reify.Plugin +Main
+% hermit Main.hs -v0 -opt=Language.GHC.Core.Reify.Plugin +Main Main.hss
 hermit<0> any-bu reify-core 
         
 
