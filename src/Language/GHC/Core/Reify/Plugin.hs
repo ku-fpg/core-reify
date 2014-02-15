@@ -163,6 +163,15 @@ reifyExpr = do
 
 	let exprTy e = TyConApp exprTyCon [e]
 
+        let dummy = do
+                nm <- mkName "dummy" 0 ty
+                return $  apps varId [ty]
+	            [ apps bindeeId [ty] [ expr
+                                         , apps nothingId [exprTy ty] []
+                                         , nm
+                                         ]
+                    ]                         
+
         let liftVar = do
                 Var id <- idR
                 let nm =  getOccString $ idName $ id
@@ -176,7 +185,7 @@ reifyExpr = do
 
         let liftExpr :: RewriteH CoreExpr
             liftExpr = liftVar 
---                    <+ liftLit
+                    <+ dummy
 
         appT idR liftExpr $ \ _ expr' -> apps returnId [exprTy ty] [expr']
 {-
