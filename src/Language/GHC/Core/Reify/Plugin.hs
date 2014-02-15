@@ -153,17 +153,25 @@ reifyExpr = do
 --        uq <- 
         let nm =  getOccString $ idName (case expr of { Var v -> v })
 
-        let str = foldr (\ a b -> mkConApp consDataCon [Type charTy,mkConApp charDataCon [Lit $ MachChar a],b])
-                        (mkConApp nilDataCon [Type charTy])
-                        nm
+        nm <- mkName nm 0 ty
 
 	return $ apps returnId [exprTy ty]
 	         [ apps varId [ty] 
 	            [ apps bindeeId [ty] [ expr
                                          , apps nothingId [exprTy ty] []
-                                         , str
-                                         , mkConApp intDataCon [Lit $ MachInt 0]
+                                         , nm
                                          ]]
 		 ]
 
 
+mkName :: String -> Integer -> Type -> TranslateH a CoreExpr
+mkName str uq ty = do
+        nmId <- findTyIdT "Language.GHC.Core.Reify.Internals.Name_"
+        return $ apps nmId [ty] [mkString str, mkInt uq]
+     
+mkString :: String -> CoreExpr        
+mkString = foldr (\ a b -> mkConApp consDataCon [Type charTy,mkConApp charDataCon [Lit $ MachChar a],b])
+                        (mkConApp nilDataCon [Type charTy])
+                
+mkInt :: Integer -> CoreExpr
+mkInt n = mkConApp intDataCon [Lit $ MachInt n]
