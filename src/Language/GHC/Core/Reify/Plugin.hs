@@ -27,7 +27,8 @@ import HERMIT.Optimize
 -- Note: All of the Dictionary submodules are now re-exported by HERMIT.Dictionary,
 --       so if you prefer you could import all these via that module, rather than seperately.
 import HERMIT.Dictionary.AlphaConversion (unshadowR)
-import HERMIT.Dictionary.Common
+import HERMIT.Dictionary.Common hiding (findId, findIdT)
+import qualified HERMIT.Dictionary.Common as Common
 import HERMIT.Dictionary.Composite (simplifyR)
 import HERMIT.Dictionary.Debug (observeR,traceR)
 --import HERMIT.Dictionary.GHC (rule,rules)
@@ -113,6 +114,31 @@ findTyIdMG nm c =
                 fail $ "multiple matches found:\n" ++ intercalate ", " (map (showPpr dynFlags) ns)
 
 -------------------------
+-- | Lookup the name in the context first, then, failing that, in GHC's global reader environment.
+findIdT :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m, MonadCatch m) => String -> Translate c m a Id
+findIdT nm = traceShow ("findIdT",nm) $
+            prefixFailMsg ("Cannot resolve name " ++ nm ++ ", ") $
+             contextonlyT (findId nm)
+
+findId :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m) => String -> c -> m Id
+findId nm c = case filter (isValName . idName) $ varSetElems (findBoundVars nm c) of
+                []         -> findIdMG nm c
+                [v]        -> return v
+                _ : _ : _  -> fail "multiple matching variables in scope."
+
+findIdMG :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m) => String -> c -> m Id
+findIdMG nm c =
+    traceShow ("findIdMG", map getOccString $ {- filter isValName $ -} findNamesFromString (hermitGlobalRdrEnv c) nm) $ 
+    case {- filter isValName $ -} findNamesFromString (hermitGlobalRdrEnv c) nm of
+      []  -> Common.findId nm c 
+      [n] -> do () <- trace ("before") $ return ()
+                v <- lookupId n
+                () <- trace ("after") $ return ()
+                return v
+      ns  -> do dynFlags <- getDynFlags
+                fail $ "multiple matches found:\n" ++ intercalate ", " (map (showPpr dynFlags) ns)
+
+---------------------------
 
 type ReExpr = RewriteH CoreExpr
 
@@ -150,6 +176,7 @@ reifyExpr = do
 
         let liftExpr :: RewriteH CoreExpr
             liftExpr = liftVar 
+--                    <+ liftLit
 
         appT idR liftExpr $ \ _ expr' -> apps returnId [exprTy ty] [expr']
 {-
