@@ -180,16 +180,15 @@ reifyExpr = do
                 (App (Var intHash) (Lit (MachInt i))) <- idR
                 observeR "liftLift0"
                 True <- return $ Just intDataCon == isDataConId_maybe intHash
-{-
                 observeR "liftLift1"
                 litId <- findIdT "Language.GHC.Core.Reify.Internals.Lit"
                 observeR "liftLift2"
                 litIntId <- findIdT "Language.GHC.Core.Reify.Internals.LitInt"
                 observeR "liftLift3"
+                observeR ("liftLift-end" ++ show (getOccString $ idName $ litIntId))
 
-                observeR ("liftLift-end" ++ show (getOccString $ idName $ litId))
--}
-                dummy "liftLit"
+                return $  apps litId [ty] 
+	            [ apps litIntId [] [ mkInt i ]]
                         
                 
         let liftVar = do

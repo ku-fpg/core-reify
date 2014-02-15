@@ -11,6 +11,7 @@ data Expr :: * -> * where
 instance Show (Expr a) where
 	show (Var b)            = show b
 	show (App e1 e2)        = show e1 ++ " " ++ show e2
+        show (Lit i)            = show i
 
 -- Not phantom, but real
 -- contains the value, the binding defintion, the name, and a unique int
@@ -24,6 +25,11 @@ data Lit :: * -> * where
         LitString       :: String             -> Lit String
         LitChar         :: Char               -> Lit Char
         LitInt          :: Int                -> Lit Int
+
+instance Show (Lit a) where
+   show (LitString str)         = show str
+   show (LitChar ch)            = show ch
+   show (LitInt i)              = show i
 
 data Name a = Name_ String Int 
         
