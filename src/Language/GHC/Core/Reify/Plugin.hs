@@ -131,6 +131,38 @@ reifyExpr = do
 	observeR "ref"
 	dynFlags <- constT getDynFlags
 	() <- trace ("type : " ++ showPpr dynFlags (HGHC.exprType e)) $ return ()
+	(ioTyCon,exprTyCon,eTy) <- case HGHC.exprType e of
+		 TyConApp ioTyCon [TyConApp exprTyCon eTy] -> return (ioTyCon,exprTyCon,eTy)
+	 	 _ -> error "Internal error; stange type to reify"
+
+	let exprTy e = TyConApp exprTyCon [e]
+
+        let liftVar = do
+                Var id <- idR
+                let nm =  getOccString $ idName $ id
+                nm <- mkName nm 0 ty
+                return $  apps varId [ty]
+	            [ apps bindeeId [ty] [ expr
+                                         , apps nothingId [exprTy ty] []
+                                         , nm
+                                         ]
+                    ]
+
+        let liftExpr :: RewriteH CoreExpr
+            liftExpr = liftVar 
+
+        appT idR liftExpr $ \ _ expr' -> apps returnId [exprTy ty] [expr']
+{-
+
+	varId     <- findIdT "Language.GHC.Core.Reify.Internals.Var"
+	bindeeId  <- findIdT "Language.GHC.Core.Reify.Internals.Bindee_"
+	returnId  <- findIdT "Language.GHC.Core.Reify.Internals.returnIO"
+	exprTyId  <- findTyIdT "Language.GHC.Core.Reify.Internals.Expr"
+	nothingId  <- findIdT "Language.GHC.Core.Reify.Internals.nothing"
+	unitId    <- findIdT "()"
+	observeR "ref"
+	dynFlags <- constT getDynFlags
+	() <- trace ("type : " ++ showPpr dynFlags (HGHC.exprType e)) $ return ()
 
 {-
   = TyVarTy Var
@@ -142,27 +174,19 @@ reifyExpr = do
 
 	
 	-}	
-	(ioTyCon,exprTyCon,eTy) <- case HGHC.exprType e of
-		 TyConApp ioTyCon [TyConApp exprTyCon eTy] -> return (ioTyCon,exprTyCon,eTy)
-	 	 _ -> error "Internal error; stange type to reify"
-
-	let exprTy e = TyConApp exprTyCon [e]
 --	traceR $ ("ty" ++ show ty)
 --	traceR $ ("expr" ++ show expr)
 --	str <- constT (mkStringExpr "mhhha")
 --        uq <- 
-        let nm =  getOccString $ idName (case expr of { Var v -> v })
 
-        nm <- mkName nm 0 ty
 
-	return $ apps returnId [exprTy ty]
-	         [ apps varId [ty] 
-	            [ apps bindeeId [ty] [ expr
-                                         , apps nothingId [exprTy ty] []
-                                         , nm
-                                         ]]
-		 ]
 
+
+        liftExpr
+--        expr' <- error ""
+--	return $ apps returnId [exprTy ty] expr'
+-}
+                 
 
 mkName :: String -> Integer -> Type -> TranslateH a CoreExpr
 mkName str uq ty = do
