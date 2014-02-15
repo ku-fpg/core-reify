@@ -23,6 +23,7 @@ instance Show (Bindee a) where
 data Lit :: * -> * where
         LitString       :: String             -> Lit String
         LitChar         :: Char               -> Lit Char
+        LitInt          :: Int                -> Lit Int
 
 data Name a = Name_ String Int 
         
