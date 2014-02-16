@@ -20,6 +20,7 @@ import Id(isDataConId_maybe)
 import HERMIT.Context
 import HERMIT.Core (Crumb(..),localFreeIdsExpr)
 import HERMIT.External
+import HERMIT.Monad
 import HERMIT.GHC hiding (mkStringExpr)
 import qualified HERMIT.GHC as HGHC
 import HERMIT.Kure hiding (apply)
@@ -157,14 +158,18 @@ reifyExpr = do
                 
             liftVar env = do
                 e@(Var var) <- idR
-                nm <- liftId var
                 let ty = HGHC.exprType e
-                return $  apps varId [ty]
-	            [ apps bindeeId [ty] [ e
+                case lookup var env of
+                  Nothing -> do
+                          nm <- liftId var
+                          return $  apps varId [ty]
+                            [ apps bindeeId [ty] [ e
                                          , apps nothingId [exprTy ty] []
                                          , nm
                                          ]
-                    ]
+                            ]
+                  Just e -> return $ e
+
 
             liftApp env = do
                 -- Assume x is not a type for now
@@ -183,24 +188,24 @@ reifyExpr = do
                 let ty = HGHC.exprType e
                 return $  apps litId [ty] 
 	            [ apps litIntId [] [ mkInt i ]]
-{-
-            liftLam = do
+
+            liftLam env = do
                 -- Assume x is not a type, for now
-                e@(Lam _ e0) <- idR
-                (var,e') <- lamT idR liftExpr (,)
+                e@(Lam var e0) <- idR
                 let a_ty = HGHC.exprType (Var var)
                 let b_ty = HGHC.exprType e0
-                appId <- findIdT "Language.GHC.Core.Reify.Internals.Lam"
                 nm <- liftId var 
-                newId <- newIdH (getOccString $ idName var) 
-                                (ty)
-                return $  apps appId [a_ty,Lam newId b_ty] [ nm ]
--}
+                newId <- constT (newIdH (getOccString $ idName var) 
+                                        (exprTy a_ty))
+                (var,e') <- lamT idR (liftExpr ((var,Var newId):env)) (,)
+                appId <- findIdT "Language.GHC.Core.Reify.Internals.Lam"
+                return $  apps appId [a_ty,b_ty] [ nm, Lam newId e' ]
+
             liftExpr :: [(Id,CoreExpr)] -> RewriteH CoreExpr
             liftExpr env = liftVar env
                         <+ liftLit env
                         <+ liftApp env -- after liftLit, which spots some apps
---                    <+ liftLam
+                        <+ liftLam env
                         <+ dummy "no_match"
 
         appT idR (liftExpr []) $ \ _ expr' -> apps returnId [exprTy ty] [expr']
