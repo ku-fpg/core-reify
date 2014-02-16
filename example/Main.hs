@@ -12,4 +12,5 @@ main = do
 --        e <- reifyExpr fib
 --        e <- reifyExpr (99 :: Int)
         e <- reifyExpr (fib 99)
+--        e <- reifyExpr (\ x -> x :: Int)
         print e

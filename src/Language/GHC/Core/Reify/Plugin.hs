@@ -139,6 +139,13 @@ reifyExpr = do
 
 	let exprTy e = TyConApp exprTyCon [e]
 
+        let liftName :: Type -> Name -> TranslateH a CoreExpr
+            liftName ty nm = mkName (getOccString nm) 0 ty
+
+            -- Assumes Var, not TyVar
+            liftId :: Var -> TranslateH a CoreExpr
+            liftId var = liftName (HGHC.exprType (Var var)) (idName var)
+
         let dummy str = do
                 nm <- mkName str 0 ty
                 return $  apps varId [ty]
@@ -148,11 +155,10 @@ reifyExpr = do
                                          ]
                     ]                         
                 
-            liftVar = do
-                e@(Var id) <- idR
+            liftVar env = do
+                e@(Var var) <- idR
+                nm <- liftId var
                 let ty = HGHC.exprType e
-                let nm =  getOccString $ idName $ id
-                nm <- mkName nm 0 ty
                 return $  apps varId [ty]
 	            [ apps bindeeId [ty] [ e
                                          , apps nothingId [exprTy ty] []
@@ -160,16 +166,16 @@ reifyExpr = do
                                          ]
                     ]
 
-            liftApp = do
+            liftApp env = do
                 -- Assume x is not a type for now
                 e@(App f x) <- idR
-                (f',x') <- appT liftExpr liftExpr (,)
+                (f',x') <- appT (liftExpr env) (liftExpr env) (,)
                 let a_ty = HGHC.exprType e
                 let b_ty = HGHC.exprType x
                 appId <- findIdT "Language.GHC.Core.Reify.Internals.App"
-                return $  apps appId [b_ty,a_ty] [ f', x' ]
+                return $  apps appId [a_ty,b_ty] [ f', x' ]
             
-            liftLit = do
+            liftLit env = do
                 e@(App (Var intHash) (Lit (MachInt i))) <- idR
                 True <- return $ Just intDataCon == isDataConId_maybe intHash
                 litId <- findIdT "Language.GHC.Core.Reify.Internals.Lit"
@@ -177,15 +183,27 @@ reifyExpr = do
                 let ty = HGHC.exprType e
                 return $  apps litId [ty] 
 	            [ apps litIntId [] [ mkInt i ]]
-                        
+{-
+            liftLam = do
+                -- Assume x is not a type, for now
+                e@(Lam _ e0) <- idR
+                (var,e') <- lamT idR liftExpr (,)
+                let a_ty = HGHC.exprType (Var var)
+                let b_ty = HGHC.exprType e0
+                appId <- findIdT "Language.GHC.Core.Reify.Internals.Lam"
+                nm <- liftId var 
+                newId <- newIdH (getOccString $ idName var) 
+                                (ty)
+                return $  apps appId [a_ty,Lam newId b_ty] [ nm ]
+-}
+            liftExpr :: [(Id,CoreExpr)] -> RewriteH CoreExpr
+            liftExpr env = liftVar env
+                        <+ liftLit env
+                        <+ liftApp env -- after liftLit, which spots some apps
+--                    <+ liftLam
+                        <+ dummy "no_match"
 
-            liftExpr :: RewriteH CoreExpr
-            liftExpr = liftVar 
-                    <+ liftLit
-                    <+ liftApp  -- after liftLit, which spots some apps
---                    <+ dummy "no_match"
-
-        appT idR liftExpr $ \ _ expr' -> apps returnId [exprTy ty] [expr']
+        appT idR (liftExpr []) $ \ _ expr' -> apps returnId [exprTy ty] [expr']
 {-
 
 	varId     <- findIdT "Language.GHC.Core.Reify.Internals.Var"
