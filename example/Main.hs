@@ -10,5 +10,6 @@ fib n = if n < 2 then 1 else fib (n-1) + fib (n-2)
 
 main = do
 --        e <- reifyExpr fib
-        e <- reifyExpr (99 :: Int)
+--        e <- reifyExpr (99 :: Int)
+        e <- reifyExpr (fib 99)
         print e

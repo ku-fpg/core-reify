@@ -114,34 +114,6 @@ findTyIdMG nm c =
       ns  -> do dynFlags <- getDynFlags
                 fail $ "multiple matches found:\n" ++ intercalate ", " (map (showPpr dynFlags) ns)
 
--------------------------
--- | Lookup the name in the context first, then, failing that, in GHC's global reader environment.
-{-
-findIdT :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m, MonadCatch m) => String -> Translate c m a Id
-findIdT nm = traceShow ("findIdT",nm) $
-            prefixFailMsg ("Cannot resolve name " ++ nm ++ ", ") $
-             contextonlyT (findId nm)
-
-findId :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m) => String -> c -> m Id
-findId nm c = case filter (isValName . idName) $ varSetElems (findBoundVars nm c) of
-                []         -> findIdMG nm c
-                [v]        -> return v
-                _ : _ : _  -> fail "multiple matching variables in scope."
-
-findIdMG :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m) => String -> c -> m Id
-findIdMG nm c =
-    let names = findNamesFromString (hermitGlobalRdrEnv c) nm in
-    traceShow ("findIdMG", map getOccString $ names ) $
-    case filter isValName $ findNamesFromString (hermitGlobalRdrEnv c) nm of
-      []  -> do () <- trace ("beforeX") $ return ()
-                Common.findId nm c 
-      [n] -> do () <- trace ("before") $ return ()
-                v <- lookupId n
-                () <- trace ("after") $ return ()
-                return v
-      ns  -> do dynFlags <- getDynFlags
-                fail $ "multiple matches found:\n" ++ intercalate ", " (map (showPpr dynFlags) ns)
--}
 ---------------------------
 
 type ReExpr = RewriteH CoreExpr
@@ -175,37 +147,43 @@ reifyExpr = do
                                          , nm
                                          ]
                     ]                         
-
-        let liftLit = do
-                (App (Var intHash) (Lit (MachInt i))) <- idR
-                observeR "liftLift0"
-                True <- return $ Just intDataCon == isDataConId_maybe intHash
-                observeR "liftLift1"
-                litId <- findIdT "Language.GHC.Core.Reify.Internals.Lit"
-                observeR "liftLift2"
-                litIntId <- findIdT "Language.GHC.Core.Reify.Internals.LitInt"
-                observeR "liftLift3"
-                observeR ("liftLift-end" ++ show (getOccString $ idName $ litIntId))
-
-                return $  apps litId [ty] 
-	            [ apps litIntId [] [ mkInt i ]]
-                        
                 
-        let liftVar = do
-                Var id <- idR
+            liftVar = do
+                e@(Var id) <- idR
+                let ty = HGHC.exprType e
                 let nm =  getOccString $ idName $ id
                 nm <- mkName nm 0 ty
                 return $  apps varId [ty]
-	            [ apps bindeeId [ty] [ expr
+	            [ apps bindeeId [ty] [ e
                                          , apps nothingId [exprTy ty] []
                                          , nm
                                          ]
                     ]
 
-        let liftExpr :: RewriteH CoreExpr
+            liftApp = do
+                -- Assume x is not a type for now
+                e@(App f x) <- idR
+                (f',x') <- appT liftExpr liftExpr (,)
+                let a_ty = HGHC.exprType e
+                let b_ty = HGHC.exprType x
+                appId <- findIdT "Language.GHC.Core.Reify.Internals.App"
+                return $  apps appId [b_ty,a_ty] [ f', x' ]
+            
+            liftLit = do
+                e@(App (Var intHash) (Lit (MachInt i))) <- idR
+                True <- return $ Just intDataCon == isDataConId_maybe intHash
+                litId <- findIdT "Language.GHC.Core.Reify.Internals.Lit"
+                litIntId <- findIdT "Language.GHC.Core.Reify.Internals.LitInt"
+                let ty = HGHC.exprType e
+                return $  apps litId [ty] 
+	            [ apps litIntId [] [ mkInt i ]]
+                        
+
+            liftExpr :: RewriteH CoreExpr
             liftExpr = liftVar 
                     <+ liftLit
-                    <+ dummy "no_match"
+                    <+ liftApp  -- after liftLit, which spots some apps
+--                    <+ dummy "no_match"
 
         appT idR liftExpr $ \ _ expr' -> apps returnId [exprTy ty] [expr']
 {-
