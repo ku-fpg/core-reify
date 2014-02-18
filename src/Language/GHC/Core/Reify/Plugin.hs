@@ -131,6 +131,7 @@ reifyExpr = do
 	exprTyId  <- findTyIdT "Language.GHC.Core.Reify.Internals.Expr"
 	nothingId  <- findIdT "Language.GHC.Core.Reify.Internals.nothing"
 	unitId    <- findIdT "()"
+	typeId     <- findIdT "Language.GHC.Core.Reify.Internals.Type"
 	observeR "ref"
 	dynFlags <- constT getDynFlags
 	() <- trace ("type : " ++ showPpr dynFlags (HGHC.exprType e)) $ return ()
@@ -146,6 +147,12 @@ reifyExpr = do
             -- Assumes Var, not TyVar
             liftId :: Var -> TranslateH a CoreExpr
             liftId var = liftName (HGHC.exprType (Var var)) (idName var)
+
+            -- Type <ty>, phantom
+            liftType :: RewriteH CoreExpr
+            liftType = do
+                    Type ty <- idR
+                    return $ apps typeId [ty] []
 
         let dummy str = do
                 nm <- mkName str 0 ty
@@ -170,6 +177,12 @@ reifyExpr = do
                             ]
                   Just e -> return $ e
 
+            liftTyApp env = do
+                e@(App f (Type a_ty)) <- idR
+                (f',x') <- appT (liftExpr env) liftType (,)
+--                let t_ty = HGHC.exprType e
+--                appId <- findIdT "Language.GHC.Core.Reify.Internals.TyApp"
+                return $ f' -- apps appId [t_ty,a_ty] [ f', x' ]
 
             liftApp env = do
                 -- Assume x is not a type for now
@@ -204,6 +217,7 @@ reifyExpr = do
             liftExpr :: [(Id,CoreExpr)] -> RewriteH CoreExpr
             liftExpr env = liftVar env
                         <+ liftLit env
+                        <+ liftTyApp env
                         <+ liftApp env -- after liftLit, which spots some apps
                         <+ liftLam env
                         <+ dummy "no_match"
