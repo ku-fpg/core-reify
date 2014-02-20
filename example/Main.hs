@@ -25,7 +25,9 @@ main = do
 --        e <- reifyExpr (\ x y -> x + y::Int)
 --        e <- reifyExpr (id (99::Int))
 --        e <- reifyExpr (id :: Int -> Int)
-        e <- reifyExpr (const (99::Int) (True::Bool))
+--        e <- reifyExpr (const (99::Int) (True::Bool))
+        e <- reifyExpr (\ x y -> (x && y,x || y))
+--        e <- reifyExpr (let f = \ x y -> (x && y,x || y) in (f,f))
         print e
         print "done"
 
