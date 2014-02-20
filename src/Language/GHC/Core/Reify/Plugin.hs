@@ -24,7 +24,7 @@ import HERMIT.Monad
 import HERMIT.GHC hiding (mkStringExpr)
 import qualified HERMIT.GHC as HGHC
 import HERMIT.Kure hiding (apply)
-import HERMIT.Optimize
+import HERMIT.Plugin
 
 -- Note: All of the Dictionary submodules are now re-exported by HERMIT.Dictionary,
 --       so if you prefer you could import all these via that module, rather than seperately.
@@ -58,7 +58,7 @@ import PrelNames (unpackCStringName,unpackCStringUtf8Name)
 import qualified Language.GHC.Core.Reify.Internals as I
 
 plugin :: Plugin
-plugin = optimize (phase 0 . interactive externals)
+plugin = hermitPlugin (phase 0 . interactive externals)
 
 externals :: [External]
 externals =
