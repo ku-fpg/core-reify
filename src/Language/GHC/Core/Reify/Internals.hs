@@ -11,14 +11,17 @@ data Expr :: * -> * where
         TyApp   :: Expr (Type a -> b) -> Type a         -> Expr b
         Lit     :: Lit a                                -> Expr a
         Lam     :: Name a -> (Expr a -> Expr b)         -> Expr (a -> b)
---        TyLam   :: Expr (t a)                           -> Expr (ForAll t)
         TyLam   :: (Type a -> Expr b)                   -> Expr (Type a -> b)
-        Fix :: Name a -> (Expr a -> Expr a)             -> Expr a
-        Case :: Expr a
-             -> Name a                  -- default of case
-             -> [Alt a c]               -- all the alts, try them in order,
-                                        -- with no overlapping (except default)
-             -> Expr b
+        -- alias for a lambda redex
+        Let     :: Name a 
+                -> (Type a -> Expr b) 
+                -> Expr a                               -> Expr b                               
+        -- fixpointing
+        Fix     :: Name a -> (Expr a -> Expr a)         -> Expr a
+        -- evaluation and de-constructing
+        Case    :: Name a 
+                -> Expr a
+                -> [Alt a c]                            -> Expr b
 
 instance Show (Expr a) where
 	show (Var b)            = show b
@@ -29,6 +32,8 @@ instance Show (Expr a) where
 
 
 ---------------------------------------------------------------------------------
+
+ -- Alts are tried them in order, with no overlapping (except default)
 
 data Alt :: * -> * -> * where
         Alt :: Match a b -> (Expr a -> Expr b -> Expr c) -> Alt a c

@@ -235,12 +235,18 @@ reifyExpr = do
                 appId <- findIdT "Language.GHC.Core.Reify.Internals.Lam"
                 return $  apps appId [a_ty,b_ty] [ nm, Lam newId e' ]
 
+
+            normalizeNonRec = do
+                e@(Let (NonRec v e0) e1) <- idR
+                return $ App (Lam v e1) e0
+                    
             liftExpr :: [(Id,CoreExpr)] -> RewriteH CoreExpr
             liftExpr env = liftVar env
                         <+ liftLit env
                         <+ liftTyApp env
                         <+ liftApp env -- after liftLit, which spots some apps
                         <+ liftLam env
+                        <+ (normalizeNonRec >>> liftExpr env)
                         <+ dummy "no_match"
 
         appT idR (liftExpr []) $ \ _ expr' -> apps returnId [exprTy ty] [expr']
