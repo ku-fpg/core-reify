@@ -202,7 +202,8 @@ reifyExpr = do
                 appId <- findIdT "Language.GHC.Core.Reify.Internals.TyApp"
                 return $ mkLams tl 
                        $ mkLets [mkTyBind hd a_ty]
-                       $ apps appId [lhs_t_ty,mkTyVarTy hd] [ mkTyApps f' [mkTyVarTy hd], x' ]
+                       $ apps appId [lhs_t_ty,mkTyVarTy hd] 
+                       $ [ mkTyApps f' [mkTyVarTy v | v <- forAlls], x' ]
 
             liftApp env = do
                 -- Assume x is not a type for now

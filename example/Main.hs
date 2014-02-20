@@ -24,7 +24,8 @@ main = do
 --        e <- reifyExpr ((\x -> x)(\ x -> x :: Int) 99)
 --        e <- reifyExpr (\ x y -> x + y::Int)
 --        e <- reifyExpr (id (99::Int))
-        e <- reifyExpr (id :: Int -> Int)
+--        e <- reifyExpr (id :: Int -> Int)
+        e <- reifyExpr (const (99::Int) (True::Bool))
         print e
         print "done"
 
