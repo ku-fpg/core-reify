@@ -1,2 +1,4 @@
+--set-pp-type Show
+--binding-of 'tyAppE
 any-bu reify-core
 resume

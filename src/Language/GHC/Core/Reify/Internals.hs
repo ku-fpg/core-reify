@@ -13,7 +13,19 @@ data Expr :: * -> * where
         Lam     :: Name a -> (Expr a -> Expr b)         -> Expr (a -> b)
 --        TyLam   :: Expr (t a)                           -> Expr (ForAll t)
         TyLam   :: (Type a -> Expr b)                   -> Expr (Type a -> b)
---        Fix :: Name a -> Expr a                 -> Expr a
+        Fix :: Name a -> (Expr a -> Expr a)             -> Expr a
+        Case :: Expr a
+             -> Name a                  -- default of case
+             -> [Alt a c]               -- all the alts, try them in order,
+                                        -- with no overlapping (except default)
+             -> Expr b
+
+data Alt :: * -> * -> * where
+        Alt :: Match a b -> (Expr a -> Expr b -> Expr c) -> Alt a c
+
+data Match :: * -> * -> * where
+        Match :: (Expr a -> Expr (Maybe b)) -> Match a b
+        DEFAULT                             :: Match a ()
 
 -- This is the smart constructor for TyLam, that takes off ForAll constructor
 --mkTyLam :: Expr (t a :: *) -> Expr (forall a . (t :: * -> *) a)
@@ -34,9 +46,10 @@ tylam = undefined
 instance Show (Expr a) where
 	show (Var b)            = show b
 	show (App e1 e2)        = "(" ++ show e1 ++ " " ++ show e2 ++ ")"
---	show (TyApp e t)        = "(" ++ show e ++ " @ " ++ show t ++ ")"
+	show (TyApp e t)        = "(" ++ show e ++ " @ " ++ show t ++ ")"
         show (Lit i)            = show i
         show (Lam nm f)         = "(\\ " ++ show nm ++ " -> " ++ show (f $ (Var (Bindee_ undefined Nothing nm))) ++ ")"
+--        show (Case e n )
 
 -- Not phantom, but real
 -- contains the value, the binding defintion, the name, and a unique int
@@ -76,10 +89,10 @@ reifyExpr _ = error "reify called at runtime (should have been removed at compil
 evalExpr :: forall a . Expr a -> a
 evalExpr (Var nm)       = evalBindee nm
 evalExpr (App e1 e2)    = evalExpr e1 (evalExpr e2)
---evalExpr (TyApp e1 t)   = evalExpr e1
+evalExpr (TyApp e1 t)   = evalExpr e1 t
 evalExpr (Lit lit)      = evalLit lit
 evalExpr (Lam n v)      = \ x -> evalExpr (v (Var (Bindee_ x Nothing n)))
---evalExpr (TyLam f)      = evalExpr (f Type)
+evalExpr (TyLam f)      = \ t -> evalExpr (f t)
 
 appTy :: (forall a . t a) -> Type a -> t a
 appTy f Type = f

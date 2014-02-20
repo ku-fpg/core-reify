@@ -97,21 +97,15 @@ tyArity = length . fst . splitForAllTys . varType
 
 
 -- | Lookup the name in the context first, then, failing that, in GHC's global reader environment.
-findTyIdT :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m, MonadCatch m) => String -> Translate c m a Id
-findTyIdT nm = prefixFailMsg ("Cannot resolve name " ++ nm ++ ", ") $
-             contextonlyT (findTyId nm)
+findTyConT :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m, MonadCatch m) => String -> Translate c m a TyCon
+findTyConT nm = prefixFailMsg ("Cannot resolve name " ++ nm ++ ", ") $
+             contextonlyT (findTyConMG nm)
 
-findTyId :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m) => String -> c -> m Id
-findTyId nm c = case varSetElems (findBoundVars nm c) of
-                []         -> findTyIdMG nm c
-                [v]        -> return v
-                _ : _ : _  -> fail "multiple matching variables in scope."
-
-findTyIdMG :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m) => String -> c -> m Id
-findTyIdMG nm c =
-    case findNamesFromString (hermitGlobalRdrEnv c) nm of
-      o | traceShow ("findTyIdMG",length o) False -> undefined
-      [n] -> lookupId n
+findTyConMG :: (BoundVars c, HasGlobalRdrEnv c, HasDynFlags m, MonadThings m) => String -> c -> m TyCon
+findTyConMG nm c =
+    case filter isTyConName $ findNamesFromString (hermitGlobalRdrEnv c) nm of
+      o | traceShow ("findTyConMG",nm,length o) False -> undefined
+      [n] -> lookupTyCon n
       ns  -> do dynFlags <- getDynFlags
                 fail $ "multiple matches found:\n" ++ intercalate ", " (map (showPpr dynFlags) ns)
 
@@ -128,25 +122,40 @@ reifyExpr = do
 	varId     <- findIdT "Language.GHC.Core.Reify.Internals.Var"
 	bindeeId  <- findIdT "Language.GHC.Core.Reify.Internals.Bindee_"
 	returnId  <- findIdT "Language.GHC.Core.Reify.Internals.returnIO"
-	exprTyId  <- findTyIdT "Language.GHC.Core.Reify.Internals.Expr"
-	nothingId  <- findIdT "Language.GHC.Core.Reify.Internals.nothing"
-	unitId    <- findIdT "()"
-	typeId     <- findIdT "Language.GHC.Core.Reify.Internals.Type"
+	exprTyCon  <- findTyConT "Language.GHC.Core.Reify.Internals.Expr"
+	nothingId <- findIdT "Language.GHC.Core.Reify.Internals.nothing"
+	unitId    <- findIdT    "()"
+	typeId    <- findIdT    "Language.GHC.Core.Reify.Internals.Type"
+	typeTyCon  <- findTyConT  "Language.GHC.Core.Reify.Internals.Type"
 	observeR "ref"
 	dynFlags <- constT getDynFlags
 	() <- trace ("type : " ++ showPpr dynFlags (HGHC.exprType e)) $ return ()
 	(ioTyCon,exprTyCon,eTy) <- case HGHC.exprType e of
 		 TyConApp ioTyCon [TyConApp exprTyCon eTy] -> return (ioTyCon,exprTyCon,eTy)
 	 	 _ -> error "Internal error; stange type to reify"
-
+	() <- trace ("type : " ++ showPpr dynFlags typeTyCon) $ return ()
 	let exprTy e = TyConApp exprTyCon [e]
+	let typeTy e = mkAppTy (mkTyConTy typeTyCon) e
+
+                    -- (\/ a . a -> a) ==> ([a],Type a -> a -> a)
+        let reifiedType ty = (tys,foldr fakeTypes inside tys)
+                where (tys,inside) = splitForAllTys ty
+                      fakeTypes :: TyVar -> Type -> Type
+                      fakeTypes v t = mkFunTy (typeTy (mkTyVarTy v)) t
+
+                    -- (\/ a . a -> a) ==> (Type a -> a -> a)
+                    -- The assumption is that someone else will provide
+                    -- the \/ a. ...
+        let normalizeTy ty = ty'
+                where (foralls,ty') = reifiedType ty
+
 
         let liftName :: Type -> Name -> TranslateH a CoreExpr
             liftName ty nm = mkName (getOccString nm) 0 ty
 
             -- Assumes Var, not TyVar
             liftId :: Var -> TranslateH a CoreExpr
-            liftId var = liftName (HGHC.exprType (Var var)) (idName var)
+            liftId var = liftName (normalizeTy (HGHC.exprType (Var var))) (idName var)
 
             -- Type <ty>, phantom
             liftType :: RewriteH CoreExpr
@@ -154,6 +163,7 @@ reifyExpr = do
                     Type ty <- idR
                     return $ apps typeId [ty] []
 
+                      
         let dummy str = do
                 nm <- mkName str 0 ty
                 return $  apps varId [ty]
@@ -165,31 +175,41 @@ reifyExpr = do
                 
             liftVar env = do
                 e@(Var var) <- idR
-                let ty = HGHC.exprType e
                 case lookup var env of
                   Nothing -> do
+                          let (foralls,ty) = reifiedType $ HGHC.exprType e
                           nm <- liftId var
-                          return $  apps varId [ty]
-                            [ apps bindeeId [ty] [ e
-                                         , apps nothingId [exprTy ty] []
-                                         , nm
-                                         ]
-                            ]
+                          -- e' = \ Type -> id ty
+                          let e' = mkLams [ mkWildValBinder (typeTy (mkTyVarTy v)) | v <- foralls ]
+                                 $ mkTyApps e
+                                 $ [ mkTyVarTy v | v <- foralls ]
+                          return $ mkLams foralls
+                                 $ apps varId [ty]
+                                 $ [ apps bindeeId [ty] 
+                                    [ e'
+                                    , apps nothingId [exprTy ty] []
+                                    , nm
+                                    ]
+                                   ]
                   Just e -> return $ e
 
             liftTyApp env = do
                 e@(App f (Type a_ty)) <- idR
                 (f',x') <- appT (liftExpr env) liftType (,)
---                let t_ty = HGHC.exprType e
---                appId <- findIdT "Language.GHC.Core.Reify.Internals.TyApp"
-                return $ f' -- apps appId [t_ty,a_ty] [ f', x' ]
+                let (forAlls,t_ty) = reifiedType (HGHC.exprType f)
+                Just (_,lhs_t_ty) <- return $ splitAppTy_maybe t_ty
+                (hd:tl) <- return $ forAlls
+                appId <- findIdT "Language.GHC.Core.Reify.Internals.TyApp"
+                return $ mkLams tl 
+                       $ mkLets [mkTyBind hd a_ty]
+                       $ apps appId [lhs_t_ty,mkTyVarTy hd] [ mkTyApps f' [mkTyVarTy hd], x' ]
 
             liftApp env = do
                 -- Assume x is not a type for now
                 e@(App f x) <- idR
                 (f',x') <- appT (liftExpr env) (liftExpr env) (,)
-                let a_ty = HGHC.exprType e
-                let b_ty = HGHC.exprType x
+                let (_,a_ty) = reifiedType (HGHC.exprType e)
+                let (_,b_ty) = reifiedType (HGHC.exprType x)   -- no rank-2 polymorphism here
                 appId <- findIdT "Language.GHC.Core.Reify.Internals.App"
                 return $  apps appId [a_ty,b_ty] [ f', x' ]
             
@@ -261,7 +281,7 @@ reifyExpr = do
 
 mkName :: String -> Integer -> Type -> TranslateH a CoreExpr
 mkName str uq ty = do
-        nmId <- findTyIdT "Language.GHC.Core.Reify.Internals.Name_"
+        nmId <- findIdT "Language.GHC.Core.Reify.Internals.Name_"
         return $ apps nmId [ty] [mkString str, mkInt uq]
      
 mkString :: String -> CoreExpr        
