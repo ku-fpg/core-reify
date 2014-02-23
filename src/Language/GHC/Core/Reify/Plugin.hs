@@ -236,17 +236,58 @@ reifyExpr = do
                 return $  apps appId [a_ty,b_ty] [ nm, Lam newId e' ]
 
 
-            normalizeNonRec = do
+            liftNonRecLet env = do
+                -- Assume x is not a type for now
+                e@(Let (NonRec var e0) e1) <- idR
+
+
+                let (_,a_ty) = reifiedType (HGHC.exprType e0)
+                let (_,b_ty) = reifiedType (HGHC.exprType e1)
+
+                nm <- liftId var 
+                newId <- constT (newIdH (getOccString $ idName var)
+                                        (exprTy a_ty))
+
+                (_,e0',e1') <- letNonRecT
+                                (idR)
+                                (liftExpr env)                   -- same env
+                                (liftExpr ((var,Var newId):env)) -- modified env
+                                (,,)
+
+                letId <- findIdT "Language.GHC.Core.Reify.Internals.Let"
+                return $  apps letId [b_ty,a_ty] [ nm, e0', Lam newId e1' ]
+
+{-
+
+                (f',x') <- appT (liftExpr env) (liftExpr env) (,)
+                let (_,a_ty) = reifiedType (HGHC.exprType e)
+                let (_,b_ty) = reifiedType (HGHC.exprType x)   -- no rank-2 polymorphism here
+                appId <- findIdT "Language.GHC.Core.Reify.Internals.App"
+                return $  apps appId [a_ty,b_ty] [ f', x' ]
+                    
+                -- Assume x is not a type, for now
+                e@(Lam var e0) <- idR
+                let a_ty = HGHC.exprType (Var var)
+                let b_ty = HGHC.exprType e0
+                nm <- liftId var 
+                newId <- constT (newIdH (getOccString $ idName var) 
+                                        (exprTy a_ty))
+                (var,e') <- lamT idR (liftExpr ((var,Var newId):env)) (,)
+                appId <- findIdT "Language.GHC.Core.Reify.Internals.Lam"
+                return $  apps appId [a_ty,b_ty] [ nm, Lam newId e' ]
+-}
+
+{-            normalizeNonRec = do
                 e@(Let (NonRec v e0) e1) <- idR
                 return $ App (Lam v e1) e0
-                    
+-}                    
             liftExpr :: [(Id,CoreExpr)] -> RewriteH CoreExpr
             liftExpr env = liftVar env
                         <+ liftLit env
                         <+ liftTyApp env
                         <+ liftApp env -- after liftLit, which spots some apps
                         <+ liftLam env
-                        <+ (normalizeNonRec >>> liftExpr env)
+                        <+ liftNonRecLet env -- (normalizeNonRec >>> liftExpr env)
                         <+ dummy "no_match"
 
         appT idR (liftExpr []) $ \ _ expr' -> apps returnId [exprTy ty] [expr']

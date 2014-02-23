@@ -6,30 +6,31 @@ module Language.GHC.Core.Reify.Internals where
 -- | 'Expr' is a HOAS representation of GHC Core.
 
 data Expr :: * -> * where
-	Var     :: Bindee a       	 		-> Expr a
-	App     :: Expr (a -> b) -> Expr a		-> Expr b
-        TyApp   :: Expr (Type a -> b) -> Type a         -> Expr b
-        Lit     :: Lit a                                -> Expr a
-        Lam     :: Name a -> (Expr a -> Expr b)         -> Expr (a -> b)
-        TyLam   :: (Type a -> Expr b)                   -> Expr (Type a -> b)
-        -- alias for a lambda redex
-        Let     :: Name a 
-                -> (Type a -> Expr b) 
-                -> Expr a                               -> Expr b                               
+	Var     :: Bindee a       	 		 -> Expr a
+	App     :: Expr (a -> b) -> Expr a 		 -> Expr b
+        TyApp   :: Expr (Type a -> b) -> Type a          -> Expr b
+        Lit     :: Lit a                                 -> Expr a
+        Lam     :: Name a -> (Expr a -> Expr b)          -> Expr (a -> b)
+        TyLam   :: (Type a -> Expr b)                    -> Expr (Type a -> b)
+        -- The rhs of any binding is 'pre-inlined', inside bindees.
+        Let     :: Name a -> Expr a -> (Expr a -> Expr b) -> Expr b
         -- fixpointing
-        Fix     :: Name a -> (Expr a -> Expr a)         -> Expr a
+        Fix     :: Name a -> (Expr a -> Expr a)          -> Expr a
         -- evaluation and de-constructing
         Case    :: Name a 
                 -> Expr a
-                -> [Alt a c]                            -> Expr b
+                -> [Alt a c]                             -> Expr b
 
 instance Show (Expr a) where
 	show (Var b)            = show b
 	show (App e1 e2)        = "(" ++ show e1 ++ " " ++ show e2 ++ ")"
 	show (TyApp e t)        = "(" ++ show e ++ " @ " ++ show t ++ ")"
         show (Lit i)            = show i
-        show (Lam nm f)         = "(\\ " ++ show nm ++ " -> " ++ show (f $ (Var (Bindee_ undefined Nothing nm))) ++ ")"
+        show (Let nm e0 e1)     = "let{" ++ show nm ++ "=" ++ show e0 ++ "}in " ++ show (e1 $ dummyVar nm)
+        show (Lam nm f)         = "(\\ " ++ show nm ++ " -> " ++ show (f $ dummyVar nm) ++ ")"
 
+dummyVar :: Name a -> Expr a
+dummyVar nm = Var (Bindee_ undefined Nothing nm)
 
 ---------------------------------------------------------------------------------
 
