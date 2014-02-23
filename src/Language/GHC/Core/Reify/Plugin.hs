@@ -18,7 +18,7 @@ import PrelNames (unitTyConKey,boolTyConKey,intTyConKey)
 import Id(isDataConId_maybe)
 
 import HERMIT.Context
-import HERMIT.Core (Crumb(..),localFreeIdsExpr)
+import HERMIT.Core (Crumb(..),localFreeIdsExpr,CoreDef(..))
 import HERMIT.External
 import HERMIT.Monad
 import HERMIT.GHC hiding (mkStringExpr)
@@ -237,9 +237,8 @@ reifyExpr = do
 
 
             liftNonRecLet env = do
-                -- Assume x is not a type for now
+                -- Assume var is not a type for now
                 e@(Let (NonRec var e0) e1) <- idR
-
 
                 let (_,a_ty) = reifiedType (HGHC.exprType e0)
                 let (_,b_ty) = reifiedType (HGHC.exprType e1)
@@ -257,30 +256,41 @@ reifyExpr = do
                 letId <- findIdT "Language.GHC.Core.Reify.Internals.Let"
                 return $  apps letId [b_ty,a_ty] [ nm, e0', Lam newId e1' ]
 
-{-
+            liftRecLet env = do
+                -- Assume var is not a type; and we have simple recursion
+                e@(Let (Rec [(var,e0)]) e1) <- idR     
 
-                (f',x') <- appT (liftExpr env) (liftExpr env) (,)
-                let (_,a_ty) = reifiedType (HGHC.exprType e)
-                let (_,b_ty) = reifiedType (HGHC.exprType x)   -- no rank-2 polymorphism here
-                appId <- findIdT "Language.GHC.Core.Reify.Internals.App"
-                return $  apps appId [a_ty,b_ty] [ f', x' ]
-                    
-                -- Assume x is not a type, for now
-                e@(Lam var e0) <- idR
-                let a_ty = HGHC.exprType (Var var)
-                let b_ty = HGHC.exprType e0
+                let (_,a_ty) = reifiedType (HGHC.exprType e0)
+                let (_,b_ty) = reifiedType (HGHC.exprType e1)
+
                 nm <- liftId var 
-                newId <- constT (newIdH (getOccString $ idName var) 
+                newId <- constT (newIdH (getOccString $ idName var)
                                         (exprTy a_ty))
-                (var,e') <- lamT idR (liftExpr ((var,Var newId):env)) (,)
-                appId <- findIdT "Language.GHC.Core.Reify.Internals.Lam"
-                return $  apps appId [a_ty,b_ty] [ nm, Lam newId e' ]
--}
 
-{-            normalizeNonRec = do
-                e@(Let (NonRec v e0) e1) <- idR
-                return $ App (Lam v e1) e0
--}                    
+                ([e0'],e1') <- letRecT
+                                (\ _ -> liftDef ((var,Var newId):env)) -- modified env 
+                                (liftExpr ((var,Var newId):env)) -- modified env
+                                (,)
+
+                letId <- findIdT "Language.GHC.Core.Reify.Internals.Let"
+                return $  apps letId [b_ty,a_ty] [ nm, e0', Lam newId e1' ]
+
+                -- The first element of the env is the *rec* name we are defining
+            liftDef :: [(Id,CoreExpr)] -> TranslateH CoreDef CoreExpr
+            liftDef env@((var,Var newId):_) = do
+                Def _ e0 <- idR    
+                    
+                let (_,a_ty) = reifiedType (HGHC.exprType e0)
+                nm <- liftId var 
+                e0' <- defT idR
+                            (liftExpr env) -- modified env
+                            (\ _ e -> e)
+
+                fixId <- findIdT "Language.GHC.Core.Reify.Internals.Fix"
+                return $  apps fixId [a_ty] [ nm, Lam newId e0' ]
+
+
+
             liftExpr :: [(Id,CoreExpr)] -> RewriteH CoreExpr
             liftExpr env = liftVar env
                         <+ liftLit env
@@ -288,6 +298,7 @@ reifyExpr = do
                         <+ liftApp env -- after liftLit, which spots some apps
                         <+ liftLam env
                         <+ liftNonRecLet env -- (normalizeNonRec >>> liftExpr env)
+                        <+ liftRecLet env -- (normalizeNonRec >>> liftExpr env)
                         <+ dummy "no_match"
 
         appT idR (liftExpr []) $ \ _ expr' -> apps returnId [exprTy ty] [expr']

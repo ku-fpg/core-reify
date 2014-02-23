@@ -27,6 +27,7 @@ instance Show (Expr a) where
 	show (TyApp e t)        = "(" ++ show e ++ " @ " ++ show t ++ ")"
         show (Lit i)            = show i
         show (Let nm e0 e1)     = "let{" ++ show nm ++ "=" ++ show e0 ++ "}in " ++ show (e1 $ dummyVar nm)
+        show (Fix nm e0)        = "fix{" ++ show nm ++ "=" ++ show (e0 $ dummyVar nm) ++ "}in " ++ show nm
         show (Lam nm f)         = "(\\ " ++ show nm ++ " -> " ++ show (f $ dummyVar nm) ++ ")"
 
 dummyVar :: Name a -> Expr a
