@@ -16,7 +16,8 @@ data Expr :: * -> * where
         Let     :: Name a -> Expr a -> (Expr a -> Expr b) -> Expr b
         -- fixpointing
         Fix     :: Name a -> (Expr a -> Expr a)          -> Expr a
-        -- evaluation and de-constructing
+        -- evaluation and de-constructing.
+        -- The list is of finite and fixed in length.
         Case    :: Name a 
                 -> Expr a
                 -> [Alt a c]                             -> Expr b

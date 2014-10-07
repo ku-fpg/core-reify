@@ -38,7 +38,7 @@ import HERMIT.Dictionary.Inline (inlineNameR, inlineNamesR)
 import HERMIT.Dictionary.Local (letIntroR,letFloatArgR,letFloatTopR)
 import HERMIT.Dictionary.Navigation (rhsOfT,parentOfT,bindingGroupOfT)
 import HERMIT.Dictionary.Composite (simplifyR)
-import HERMIT.Dictionary.Unfold (cleanupUnfoldR) -- unfoldNameR,
+--import HERMIT.Dictionary.Unfold (cleanupUnfoldR) -- unfoldNameR,
 
 import Debug.Trace
 
@@ -66,7 +66,7 @@ externals =
         (promoteExprR reifyExpr :: RewriteH Core)
         ["Reify a Core expression into a GADT construction"]
     ]
-    
+
 -------------------------
 
 -- | Create a 'CoreExpr' that evaluates to the given string
@@ -77,7 +77,7 @@ mkStringExpr str = liftM mk (lookupId unpackName)
    unpackName | all safeChar str = unpackCStringName
               | otherwise        = unpackCStringUtf8Name
    safeChar c = ord c >= 1 && ord c <= 0x7F
- 
+
 {--------------------------------------------------------------------
     Core utilities
 --------------------------------------------------------------------}
@@ -163,7 +163,7 @@ reifyExpr = do
                     Type ty <- idR
                     return $ apps typeId [ty] []
 
-                      
+
         let dummy str = do
                 nm <- mkName str 0 ty
                 return $  apps varId [ty]
@@ -171,8 +171,8 @@ reifyExpr = do
                                          , apps nothingId [exprTy ty] []
                                          , nm
                                          ]
-                    ]                         
-                
+                    ]
+
             liftVar env = do
                 e@(Var var) <- idR
                 case lookup var env of
@@ -185,7 +185,7 @@ reifyExpr = do
                                  $ [ mkTyVarTy v | v <- foralls ]
                           return $ mkLams foralls
                                  $ apps varId [ty]
-                                 $ [ apps bindeeId [ty] 
+                                 $ [ apps bindeeId [ty]
                                     [ e'
                                     , apps nothingId [exprTy ty] []
                                     , nm
@@ -200,9 +200,9 @@ reifyExpr = do
                 Just (_,lhs_t_ty) <- return $ splitAppTy_maybe t_ty
                 (hd:tl) <- return $ forAlls
                 appId <- findIdT "Language.GHC.Core.Reify.Internals.TyApp"
-                return $ mkLams tl 
+                return $ mkLams tl
                        $ mkLets [mkTyBind hd a_ty]
-                       $ apps appId [lhs_t_ty,mkTyVarTy hd] 
+                       $ apps appId [lhs_t_ty,mkTyVarTy hd]
                        $ [ mkTyApps f' [mkTyVarTy v | v <- forAlls], x' ]
 
             liftApp env = do
@@ -213,14 +213,14 @@ reifyExpr = do
                 let (_,b_ty) = reifiedType (HGHC.exprType x)   -- no rank-2 polymorphism here
                 appId <- findIdT "Language.GHC.Core.Reify.Internals.App"
                 return $  apps appId [a_ty,b_ty] [ f', x' ]
-            
+
             liftLit env = do
                 e@(App (Var intHash) (Lit (MachInt i))) <- idR
                 True <- return $ Just intDataCon == isDataConId_maybe intHash
                 litId <- findIdT "Language.GHC.Core.Reify.Internals.Lit"
                 litIntId <- findIdT "Language.GHC.Core.Reify.Internals.LitInt"
                 let ty = HGHC.exprType e
-                return $  apps litId [ty] 
+                return $  apps litId [ty]
 	            [ apps litIntId [] [ mkInt i ]]
 
             liftLam env = do
@@ -228,8 +228,8 @@ reifyExpr = do
                 e@(Lam var e0) <- idR
                 let a_ty = HGHC.exprType (Var var)
                 let b_ty = HGHC.exprType e0
-                nm <- liftId var 
-                newId <- constT (newIdH (getOccString $ idName var) 
+                nm <- liftId var
+                newId <- constT (newIdH (getOccString $ idName var)
                                         (exprTy a_ty))
                 (var,e') <- lamT idR (liftExpr ((var,Var newId):env)) (,)
                 appId <- findIdT "Language.GHC.Core.Reify.Internals.Lam"
@@ -243,7 +243,7 @@ reifyExpr = do
                 let (_,a_ty) = reifiedType (HGHC.exprType e0)
                 let (_,b_ty) = reifiedType (HGHC.exprType e1)
 
-                nm <- liftId var 
+                nm <- liftId var
                 newId <- constT (newIdH (getOccString $ idName var)
                                         (exprTy a_ty))
 
@@ -258,17 +258,17 @@ reifyExpr = do
 
             liftRecLet env = do
                 -- Assume var is not a type; and we have simple recursion
-                e@(Let (Rec [(var,e0)]) e1) <- idR     
+                e@(Let (Rec [(var,e0)]) e1) <- idR
 
                 let (_,a_ty) = reifiedType (HGHC.exprType e0)
                 let (_,b_ty) = reifiedType (HGHC.exprType e1)
 
-                nm <- liftId var 
+                nm <- liftId var
                 newId <- constT (newIdH (getOccString $ idName var)
                                         (exprTy a_ty))
 
                 ([e0'],e1') <- letRecT
-                                (\ _ -> liftDef ((var,Var newId):env)) -- modified env 
+                                (\ _ -> liftDef ((var,Var newId):env)) -- modified env
                                 (liftExpr ((var,Var newId):env)) -- modified env
                                 (,)
 
@@ -276,12 +276,13 @@ reifyExpr = do
                 return $  apps letId [b_ty,a_ty] [ nm, e0', Lam newId e1' ]
 
                 -- The first element of the env is the *rec* name we are defining
+                -- TODO: Roll this into liftRecLet
             liftDef :: [(Id,CoreExpr)] -> TranslateH CoreDef CoreExpr
             liftDef env@((var,Var newId):_) = do
-                Def _ e0 <- idR    
-                    
+                Def _ e0 <- idR
+
                 let (_,a_ty) = reifiedType (HGHC.exprType e0)
-                nm <- liftId var 
+                nm <- liftId var
                 e0' <- defT idR
                             (liftExpr env) -- modified env
                             (\ _ e -> e)
@@ -289,7 +290,32 @@ reifyExpr = do
                 fixId <- findIdT "Language.GHC.Core.Reify.Internals.Fix"
                 return $  apps fixId [a_ty] [ nm, Lam newId e0' ]
 
+            liftCase env = do
+                Case e0 var ty alts <- idR
 
+                nm <- liftId var
+
+                -- Alt :: Match a b -> (Expr a -> Expr b -> Expr c) -> Alt a c
+                let liftAlt :: TranslateH CoreAlt CoreExpr
+                    liftAlt = do
+
+                            return $ apps altId [a_ty,a_ty,c_ty]
+                                                [the_match,mkLams [expr_a,expr_b] the_branch]
+
+                            fail "ALT FAIL"
+
+                (e0',altss') <- caseT
+                                (liftExpr env)
+                                idR
+                                idR
+                                (\ _ -> liftAlt)
+                                (\ a b c d -> (a,d))
+                matchTyCon <- findTyConT "Language.GHC.Core.Reify.Internals.Match"
+                let alts' = mkList (mkAppTys (mkTyConTy matchTyCon) [])
+                          $ altss'
+
+                caseId <- findIdT "Language.GHC.Core.Reify.Internals.Case"
+                return $  apps caseId [ty] [ nm, e0, mkAlts alts' ]
 
             liftExpr :: [(Id,CoreExpr)] -> RewriteH CoreExpr
             liftExpr env = liftVar env
@@ -322,12 +348,12 @@ reifyExpr = do
   | ForAllTy Var Type
   | LitTy TyLit
 
-	
-	-}	
+
+	-}
 --	traceR $ ("ty" ++ show ty)
 --	traceR $ ("expr" ++ show expr)
 --	str <- constT (mkStringExpr "mhhha")
---        uq <- 
+--        uq <-
 
 
 
@@ -336,16 +362,22 @@ reifyExpr = do
 --        expr' <- error ""
 --	return $ apps returnId [exprTy ty] expr'
 -}
-                 
+
 
 mkName :: String -> Integer -> Type -> TranslateH a CoreExpr
 mkName str uq ty = do
         nmId <- findIdT "Language.GHC.Core.Reify.Internals.Name_"
         return $ apps nmId [ty] [mkString str, mkInt uq]
-     
-mkString :: String -> CoreExpr        
-mkString = foldr (\ a b -> mkConApp consDataCon [Type charTy,mkConApp charDataCon [Lit $ MachChar a],b])
-                        (mkConApp nilDataCon [Type charTy])
-                
+
+mkString :: String -> CoreExpr
+mkString = mkList charTy . map mkChar
+
+mkList :: Type -> [CoreExpr] -> CoreExpr
+mkList ty = foldr (\ a b -> mkConApp consDataCon [Type ty,a,b])
+                  (mkConApp nilDataCon [Type ty])
+
 mkInt :: Integer -> CoreExpr
 mkInt n = mkConApp intDataCon [Lit $ MachInt n]
+
+mkChar :: Char -> CoreExpr
+mkChar ch = mkConApp charDataCon [Lit $ MachChar ch]

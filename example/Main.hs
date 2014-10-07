@@ -29,7 +29,8 @@ main = do
 --        e <- reifyExpr (\ x y -> (x && y,x || y))
 --        e <- reifyExpr (let f = \ x y -> (x && y,x || y) in (f,f))
 --        e <- reifyExpr ([1,2,3]::[Int])
-        e <- reifyExpr (let xs = 1 : xs :: [Int] in xs)
+--        e <- reifyExpr (let xs = 1 : xs :: [Int] in xs)
+        e <- reifyExpr (if 2 == (4::Int) then 7 :: Int else 9)
         print e
         print "done"
 
